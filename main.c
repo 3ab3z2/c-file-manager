@@ -404,6 +404,7 @@ float get_recursive_size_directory(char *path) {
     if (strcmp(dir_entry->d_name, ".") != 0 &&
         strcmp(dir_entry->d_name, "..") != 0) {
       snprintf(temp_path, sizeof(temp_path), "%s/%s", path, dir_entry->d_name);
+
       if (dir_entry->d_type != DT_DIR) {
         stat(temp_path, &file_stat);
         total_files++;
@@ -421,6 +422,74 @@ float get_recursive_size_directory(char *path) {
   return directory_size;
 }
 
+void change_permissions(char *files[]) {
+  char temp_address[1000];
+  if (strcmp(files[selection], "..") != 0) {
+    snprintf(temp_address, sizeof(temp_address), "%s%s",
+             current_directory_->cwd, files[selection]);
+
+    // Move the cursor to the bottom of the window
+    wmove(info_win, getmaxy(info_win) - 5, 1);
+
+    int permissions;
+    wclear(path_win);
+    wmove(path_win, 1, 0);
+    wprintw(path_win, "Select permission option:  ");
+
+  LOOP_:
+    int option;
+    if (wscanw(path_win, "%d", &option) != 1) {
+      wprintw(path_win, "Invalid input. Please enter a number.\n");
+      goto LOOP_;
+    }
+
+    wclear(path_win);
+    wmove(path_win, 1, 0);
+    wprintw(path_win, "Select permission option: %d", option);
+    wrefresh(path_win);  // Refresh the path_win to display the selected option
+
+    switch (option) {
+      case 1:
+        permissions = S_IRUSR | S_IRGRP | S_IROTH;
+        break;
+      case 2:
+        permissions = S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH;
+        break;
+      case 3:
+        permissions = S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP |
+                      S_IXGRP | S_IROTH | S_IXOTH;
+        break;
+      default:
+        wprintw(path_win, "Invalid option.\n");
+        goto LOOP_;
+        break;
+    }
+
+    if (chmod(temp_address, permissions) == 0) {
+      wprintw(path_win, "Permissions changed successfully.\n");
+    } else {
+      wprintw(path_win, "Failed to change permissions.\n");
+    }
+  }
+}
+
+char *permissions(mode_t mode) {
+  static char perms[10];
+
+  perms[0] = (mode & S_IRUSR) ? 'r' : '-';
+  perms[1] = (mode & S_IWUSR) ? 'w' : '-';
+  perms[2] = (mode & S_IXUSR) ? 'x' : '-';
+  perms[3] = (mode & S_IRGRP) ? 'r' : '-';
+  perms[4] = (mode & S_IWGRP) ? 'w' : '-';
+  perms[5] = (mode & S_IXGRP) ? 'x' : '-';
+  perms[6] = (mode & S_IROTH) ? 'r' : '-';
+  perms[7] = (mode & S_IWOTH) ? 'w' : '-';
+  perms[8] = (mode & S_IXOTH) ? 'x' : '-';
+  perms[9] = '\0';
+
+  return perms;
+}
+
 void show_file_info(char *files[]) {
   wmove(info_win, 1, 1);
   char temp_address[1000];
@@ -433,15 +502,99 @@ void show_file_info(char *files[]) {
     //   get_recursive_size_directory(temp_address);
     // }
 
-    wprintw(info_win, "Name: %s\n Type: %s\n Size: %.2f KB\n", files[selection],
-            isDir(file_stats.st_mode) ? "Folder" : "File",
+    wprintw(info_win, "Name: %s\n Type: %s\n Size: %.2f KB\n Permissions: %s\n",
+            files[selection], isDir(file_stats.st_mode) ? "Folder" : "File",
             isDir(file_stats.st_mode)
                 ? get_recursive_size_directory(temp_address)
-                : (float)file_stats.st_size / (float)1024);
+                : (float)file_stats.st_size / (float)1024,
+            permissions(file_stats.st_mode));
     wprintw(info_win, " No. Files: %zu\n",
             isDir(file_stats.st_mode) ? total_files : 1);
+    wprintw(info_win, "\n\n Shortcuts:\n");
+    wprintw(info_win, "  - Arrow Up/Down: Navigate through files\n");
+    wprintw(info_win, "  - Enter: Open selected file or directory\n");
+    wprintw(info_win, "  - n: Make a new file\n");
+    wprintw(info_win, "  - N: Make a new folder\n");
+    wprintw(info_win, "  - r: Rename a file\n");
+    wprintw(info_win, "  - c: Copy a file\n");
+    wprintw(info_win, "  - m: Move a file\n");
+    wprintw(info_win, "  - p: Change permissions\n");
+    wprintw(info_win, "  - d: Delete a file\n");
+    wprintw(info_win, "  - h: Show this help screen\n");
+    wprintw(info_win, "  - q: Quit the program\n");
   } else {
     wprintw(info_win, "Press Enter to go back\n");
+    wprintw(info_win, "\n\n Shortcuts:\n");
+    wprintw(info_win, "  - Arrow Up/Down: Navigate through files\n");
+    wprintw(info_win, "  - Enter: Open selected file or directory\n");
+    wprintw(info_win, "  - n: Make a new file\n");
+    wprintw(info_win, "  - N: Make a new folder\n");
+    wprintw(info_win, "  - r: Rename a file\n");
+    wprintw(info_win, "  - c: Copy a file\n");
+    wprintw(info_win, "  - m: Move a file\n");
+    wprintw(info_win, "  - p: Change permissions\n");
+    wprintw(info_win, "  - d: Delete a file\n");
+    wprintw(info_win, "  - h: Show this help screen\n");
+    wprintw(info_win, "  - q: Quit the program\n");
+  }
+}
+
+void make_folder() {
+  char folder_name[100];
+  wprintw(path_win, "Enter the name of the folder: ");
+  wgetstr(path_win, folder_name);
+
+  char folder_path[1000];
+  snprintf(folder_path, sizeof(folder_path), "%s%s", current_directory_->cwd,
+           folder_name);
+  if (mkdir(folder_path, 0777) == 0) {
+    wprintw(path_win, "Folder created successfully.\n");
+  } else {
+    wprintw(path_win, "Failed to create folder.\n");
+  }
+}
+
+void make_file() {
+  char file_name[100];
+  wprintw(path_win, "Enter the name of the file: ");
+  wgetstr(path_win, file_name);
+
+  char file_path[1000];
+  snprintf(file_path, sizeof(file_path), "%s%s", current_directory_->cwd,
+           file_name);
+
+  int mode = 0;
+  char permission_choice[10];
+  wprintw(path_win, "Choose file permissions:\n");
+  wprintw(path_win, "1. Read only\n");
+  wprintw(path_win, "2. Read and write\n");
+  wprintw(path_win, "3. Read, write, and execute\n");
+  wgetstr(path_win, permission_choice);
+
+  switch (atoi(permission_choice)) {
+    case 1:
+      mode = S_IRUSR;
+      break;
+    case 2:
+      mode = S_IRUSR | S_IWUSR;
+      break;
+    case 3:
+      mode = S_IRUSR | S_IWUSR | S_IXUSR;
+      break;
+    default:
+      wprintw(
+          path_win,
+          "Invalid choice. File will be created with default permissions.\n");
+      break;
+  }
+
+  FILE *file = fopen(file_path, "w");
+  if (file != NULL) {
+    chmod(file_path, mode);
+    wprintw(path_win, "File created successfully.\n");
+    fclose(file);
+  } else {
+    wprintw(path_win, "Failed to create file.\n");
   }
 }
 
@@ -526,9 +679,19 @@ int main() {
       case 'C':
         copy_files(files);
         break;
+      case 'n':
+        make_file();
+        break;
+      case 'N':
+        make_folder();
+        break;
       case 'm':
       case 'M':
         move_file(files);
+        break;
+      case 'p':
+      case 'P':
+        change_permissions(files);
         break;
       case 'd':
       case 'D':
